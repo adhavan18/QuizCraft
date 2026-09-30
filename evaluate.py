@@ -9,6 +9,8 @@ Metrics (per generator x difficulty, averaged over topics):
   distractor   mean cosine similarity between answer and distractors
                (higher = more confusable = harder)
   latency      seconds per quiz
+  api_failed   topics skipped because the Gemini API was unavailable (503/429);
+               excluded from the other metrics, which measure question quality
 """
 import argparse
 import json
@@ -17,6 +19,7 @@ import re
 import time
 
 import numpy as np
+from google.genai import errors
 
 from backend.llm import generate_quiz
 from backend.nlp_generator import clean_text, generate_offline_quiz
@@ -54,12 +57,19 @@ def distractor_similarity(q) -> float:
 
 
 def evaluate(generator: str, difficulty: str, n: int, all_chunks: list) -> dict:
-    rows = []
+    rows, api_failed = [], 0
     for topic in TOPICS:
         sources = [clean_text(c) for c in retrieve_chunks(topic, top_k=3 if generator == "gemini" else 8)]
         start = time.perf_counter()
         if generator == "gemini":
-            qs = generate_quiz(" ".join(sources), topic, n, difficulty)
+            try:
+                qs = generate_quiz(" ".join(sources), topic, n, difficulty)
+            except errors.APIError as e:
+                print(f"  API unavailable for '{topic}' ({e.code}), skipping")
+                api_failed += 1
+                continue
+            finally:
+                time.sleep(4)  # stay under the free-tier requests-per-minute limit
         else:
             qs = generate_offline_quiz(sources, all_chunks, topic, n, difficulty)
         latency = time.perf_counter() - start
@@ -71,7 +81,9 @@ def evaluate(generator: str, difficulty: str, n: int, all_chunks: list) -> dict:
             "distractor": np.mean([distractor_similarity(q) for q in qs]) if qs else 0,
             "latency": latency,
         })
-    return {k: round(float(np.mean([r[k] for r in rows])), 3) for k in rows[0]}
+    if not rows:
+        return {"yield": 0, "valid": 0, "grounded": 0, "distractor": 0, "latency": 0, "api_failed": api_failed}
+    return {**{k: round(float(np.mean([r[k] for r in rows])), 3) for k in rows[0]}, "api_failed": api_failed}
 
 
 def main():

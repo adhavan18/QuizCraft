@@ -33,7 +33,7 @@ topic ──► embed ──► top-k chunks ◄──────────�
 
 | Area | Original | This fork |
 |---|---|---|
-| Runs out of the box | No: `PyPDF2` import missing from requirements, retired `gemini-1.5-flash` model | Fixed; model configurable via `GEMINI_MODEL` |
+| Runs out of the box | No: `PyPDF2` import missing from requirements, retired `gemini-1.5-flash` model | Fixed; model configurable via `GEMINI_MODEL` (default `gemini-3.8-flash`), retries on 429/503 |
 | LLM output | Free text split on newlines | JSON schema (`question`, `options`, `answer`, `explanation`), validated |
 | Difficulty | Not implemented | easy / medium / hard in both generators |
 | Works without API key | No | Offline NLP generator (`backend/nlp_generator.py`) |
