@@ -1,6 +1,6 @@
 """Evaluate quiz generators on the indexed textbook.
 
-Usage:  python evaluate.py [--generators offline gemini] [--n 5]
+Usage:  python evaluate.py [--generators offline gemini] [--n 5] [--topics 12]
 
 Metrics (per generator x difficulty, averaged over topics):
   yield        questions returned / questions requested
@@ -56,9 +56,9 @@ def distractor_similarity(q) -> float:
     return float(np.mean(vecs[1:] @ vecs[0]))
 
 
-def evaluate(generator: str, difficulty: str, n: int, all_chunks: list) -> dict:
+def evaluate(generator: str, difficulty: str, n: int, all_chunks: list, topics: list) -> dict:
     rows, api_failed = [], 0
-    for topic in TOPICS:
+    for topic in topics:
         sources = [clean_text(c) for c in retrieve_chunks(topic, top_k=3 if generator == "gemini" else 8)]
         start = time.perf_counter()
         if generator == "gemini":
@@ -90,24 +90,31 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--generators", nargs="+", default=["offline"])
     parser.add_argument("--n", type=int, default=5)
+    # The Gemini free tier allows ~20 requests/day per model, so evaluate fewer topics there
+    parser.add_argument("--topics", type=int, default=len(TOPICS))
     args = parser.parse_args()
+    topics = TOPICS[::max(1, len(TOPICS) // args.topics)][:args.topics]
 
     all_chunks = load_chunks()
     results = []
     for gen in args.generators:
         for diff in ["easy", "medium", "hard"]:
-            metrics = evaluate(gen, diff, args.n, all_chunks)
+            metrics = evaluate(gen, diff, args.n, all_chunks, topics)
             results.append({"generator": gen, "difficulty": diff, **metrics})
             print(results[-1])
 
     os.makedirs(os.path.join(ROOT, "results"), exist_ok=True)
-    with open(os.path.join(ROOT, "results", "eval_results.json"), "w") as f:
+    name = "eval_" + "_".join(args.generators)
+    with open(os.path.join(ROOT, "results", name + ".json"), "w") as f:
         json.dump(results, f, indent=2)
-    header = "| generator | difficulty | yield | valid | grounded | distractor sim | latency (s) |\n|---|---|---|---|---|---|---|\n"
+    header = ("| generator | difficulty | yield | valid | grounded | distractor sim | latency (s) | API failures |\n"
+              "|---|---|---|---|---|---|---|---|\n")
     body = "".join(f"| {r['generator']} | {r['difficulty']} | {r['yield']:.2f} | {r['valid']:.2f} | "
-                   f"{r['grounded']:.2f} | {r['distractor']:.2f} | {r['latency']:.2f} |\n" for r in results)
-    with open(os.path.join(ROOT, "results", "eval_results.md"), "w") as f:
-        f.write(f"Evaluated on {len(TOPICS)} Grade 9 science topics, {args.n} questions each.\n\n" + header + body)
+                   f"{r['grounded']:.2f} | {r['distractor']:.2f} | {r['latency']:.2f} | {r['api_failed']} |\n"
+                   for r in results)
+    with open(os.path.join(ROOT, "results", name + ".md"), "w") as f:
+        models = f" (model: {os.getenv('GEMINI_MODEL', 'default')})" if "gemini" in args.generators else ""
+        f.write(f"Evaluated on {len(topics)} Grade 9 science topics, {args.n} questions each{models}.\n\n" + header + body)
     print(header + body)
 
 

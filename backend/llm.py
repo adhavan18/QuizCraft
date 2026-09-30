@@ -66,7 +66,9 @@ def generate_with_retry(retries: int = 2, **kwargs):
             except errors.APIError as e:
                 if e.code not in RETRYABLE:
                     raise
-                if attempt == retries:
+                # 429 = quota for this model is used up (free tier: 20 requests/day per
+                # model); retrying only burns more quota, so go straight to the next model
+                if e.code == 429 or attempt == retries:
                     if model == models[-1]:
                         raise
                     break  # move on to the next model
