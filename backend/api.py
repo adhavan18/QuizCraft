@@ -26,11 +26,11 @@ async def ingest_pdf(file: UploadFile):
 @app.post("/quiz", response_model=QuizResponse)
 async def generate_quiz_api(req: QuizRequest):
     try:
-        context = " ".join(retrieve_chunks(req.topic))
+        sources = retrieve_chunks(req.topic)
     except FileNotFoundError as e:
         raise HTTPException(409, str(e))
     try:
-        quiz_text = generate_quiz(context, req.topic, req.num_questions)
+        questions = generate_quiz(" ".join(sources), req.topic, req.num_questions, req.difficulty)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
-    return QuizResponse(questions=[line for line in quiz_text.split("\n") if line.strip()])
+    return QuizResponse(topic=req.topic, difficulty=req.difficulty, questions=questions, sources=sources)

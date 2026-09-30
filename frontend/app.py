@@ -15,23 +15,50 @@ with tab1:
     if uploaded_file:
         if st.button("Ingest & Build Index"):
             files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "application/pdf")}
-            res = requests.post(f"{API_URL}/ingest/upload", files=files)
+            with st.spinner("Extracting text and building the vector index..."):
+                res = requests.post(f"{API_URL}/ingest/upload", files=files)
             if res.status_code == 200:
-                st.success(res.json())
+                st.success(f"Indexed {res.json()['chunks']} chunks from {uploaded_file.name}")
             else:
                 st.error(f"Error {res.status_code}: {res.text}")
 
 with tab2:
     st.header("Generate Quiz")
-    topic = st.text_input("Enter topic or chapter name:")
-    num_q = st.slider("Number of questions", 1, 10, 5)
-    if st.button("Generate Quiz"):
-        payload = {"topic": topic, "num_questions": num_q}
-        res = requests.post(f"{API_URL}/quiz", json=payload)
+    col1, col2, col3 = st.columns([3, 1, 1])
+    topic = col1.text_input("Enter topic or chapter name:")
+    num_q = col2.slider("Number of questions", 1, 10, 5)
+    difficulty = col3.selectbox("Difficulty", ["easy", "medium", "hard"], index=1)
+
+    if st.button("Generate Quiz", disabled=not topic.strip()):
+        payload = {"topic": topic, "num_questions": num_q, "difficulty": difficulty}
+        with st.spinner("Retrieving context and generating questions..."):
+            res = requests.post(f"{API_URL}/quiz", json=payload)
         if res.status_code == 200:
-            data = res.json()
-            st.subheader("Quiz")
-            for i, q in enumerate(data.get("questions", []), start=1):
-                st.markdown(f"**Q{i}.** {q}")
+            st.session_state.quiz = res.json()
+            st.session_state.submitted = False
         else:
-            st.error(f"Error {res.status_code}: {res.text}")
+            st.error(f"Error {res.status_code}: {res.json().get('detail', res.text)}")
+
+    quiz = st.session_state.get("quiz")
+    if quiz:
+        st.subheader(f"Quiz: {quiz['topic']} ({quiz['difficulty']})")
+        answers = {}
+        for i, q in enumerate(quiz["questions"]):
+            answers[i] = st.radio(f"**Q{i + 1}.** {q['question']}", q["options"], index=None, key=f"q{i}")
+            if st.session_state.get("submitted"):
+                if answers[i] == q["answer"]:
+                    st.success(f"Correct! {q['explanation']}")
+                else:
+                    st.error(f"Answer: {q['answer']}. {q['explanation']}")
+
+        if st.button("Submit answers"):
+            st.session_state.submitted = True
+            st.rerun()
+
+        if st.session_state.get("submitted"):
+            score = sum(answers[i] == q["answer"] for i, q in enumerate(quiz["questions"]))
+            st.metric("Score", f"{score} / {len(quiz['questions'])}")
+
+        with st.expander("Retrieved textbook context (RAG sources)"):
+            for j, src in enumerate(quiz.get("sources", []), start=1):
+                st.markdown(f"**Chunk {j}:** {src[:600]}...")
