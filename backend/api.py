@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, HTTPException, UploadFile
 from backend.rag import ROOT, load_pdf, chunk_text, build_faiss_index, retrieve_chunks, load_chunks, index_exists
 from backend.llm import generate_quiz
-from backend.nlp_generator import generate_offline_quiz
+from backend.nlp_generator import clean_text, generate_offline_quiz
 from backend.models import QuizRequest, QuizResponse
 
 app = FastAPI(title="QuizLLM API")
@@ -36,7 +36,7 @@ def generate_quiz_api(req: QuizRequest):
         generator = "gemini" if os.getenv("GOOGLE_API_KEY") else "offline"
     try:
         # The offline generator needs more sentences to choose from
-        sources = retrieve_chunks(req.topic, top_k=3 if generator == "gemini" else 8)
+        sources = [clean_text(c) for c in retrieve_chunks(req.topic, top_k=3 if generator == "gemini" else 8)]
     except FileNotFoundError as e:
         raise HTTPException(409, str(e))
     if generator == "gemini":
