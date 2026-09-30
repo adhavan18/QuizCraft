@@ -33,7 +33,7 @@ topic ──► embed ──► top-k chunks ◄──────────�
 
 | Area | Original | This fork |
 |---|---|---|
-| Runs out of the box | No: `PyPDF2` import missing from requirements, retired `gemini-1.5-flash` model | Fixed; model configurable via `GEMINI_MODEL` |
+| Runs out of the box | No: `PyPDF2` import missing from requirements, retired `gemini-1.5-flash` model | Fixed; model configurable via `GEMINI_MODEL` (default `gemini-3.8-flash`), retries on 429/503 |
 | LLM output | Free text split on newlines | JSON schema (`question`, `options`, `answer`, `explanation`), validated |
 | Difficulty | Not implemented | easy / medium / hard in both generators |
 | Works without API key | No | Offline NLP generator (`backend/nlp_generator.py`) |
@@ -79,20 +79,25 @@ Open http://localhost:8501, upload `data/sci_9.pdf` in the first tab, then gener
 
 ### Evaluation
 
-Offline generator, 12 Grade 9 science topics, 5 questions each:
+**Offline generator**, 12 Grade 9 science topics, 5 questions each (`results/eval_offline.md`):
 
 | difficulty | yield | valid | grounded | distractor sim | latency (s) |
 |---|---|---|---|---|---|
-| easy | 1.00 | 1.00 | 1.00 | 0.39 | 1.49* |
-| medium | 1.00 | 1.00 | 1.00 | 0.43 | 0.53 |
-| hard | 1.00 | 1.00 | 1.00 | 0.52 | 0.42 |
+| easy | 1.00 | 1.00 | 1.00 | 0.39 | ~0.5-1.5 |
+| medium | 1.00 | 1.00 | 1.00 | 0.43 | ~0.5-1.5 |
+| hard | 1.00 | 1.00 | 1.00 | 0.52 | ~0.5-1.5 |
 
-\* includes the one-time corpus build. Distractor similarity rising with difficulty shows the
-difficulty setting works as intended. Grounding is 1.00 by construction for the extractive
-offline generator.
+Distractor similarity rising with difficulty shows the difficulty setting works as intended.
+Grounding is 1.00 by construction for the extractive offline generator. The first request also
+pays a one-time ~8 s corpus build (POS-tagging the book).
+
+**Gemini generator (partial)**, easy difficulty, 7 of 12 topics (the rest hit free-tier limits):
+yield 0.97, valid 1.00, grounded 0.96, distractor sim 0.42. Gemini writes more varied,
+reasoning-style questions (e.g. numerical problems, "why" questions) but depends on API
+availability: the free tier allows about 20 requests per model per day and often returns
+503 "high demand". A full run needs a fresh daily quota:
 
 ```bash
-python evaluate.py --generators offline            # add "gemini" if GOOGLE_API_KEY is set
+python evaluate.py --generators offline            # all 12 topics
+python evaluate.py --generators gemini --topics 6  # 18 calls, fits one model's daily quota
 ```
-
-Results are written to `results/eval_results.md`.

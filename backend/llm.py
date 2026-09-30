@@ -1,15 +1,19 @@
 import os
+import time
 
 from dotenv import load_dotenv
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from backend.models import Question
 
 load_dotenv()  # loads .env into environment
 
-# gemini-1.5-flash has been retired; keep the model configurable
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Older Gemini models get retired for new keys; keep the model configurable
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+# Tried in order when the primary model is overloaded
+FALLBACK_MODELS = [m for m in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-3.7-flash,gemini-3.5-flash").split(",") if m]
+RETRYABLE = {429, 500, 503}  # rate limited / transient overload
 
 DIFFICULTY_GUIDE = {
     "easy": "direct recall of facts and definitions stated in the text",
@@ -53,9 +57,26 @@ def validate(questions: list[Question]) -> list[Question]:
     return [q for q in questions if len(set(q.options)) == 4 and q.answer in q.options]
 
 
+def generate_with_retry(retries: int = 2, **kwargs):
+    models = [MODEL_NAME] + [m for m in FALLBACK_MODELS if m != MODEL_NAME]
+    for model in models:
+        for attempt in range(retries + 1):
+            try:
+                return get_client().models.generate_content(model=model, **kwargs)
+            except errors.APIError as e:
+                if e.code not in RETRYABLE:
+                    raise
+                # 429 = quota for this model is used up (free tier: 20 requests/day per
+                # model); retrying only burns more quota, so go straight to the next model
+                if e.code == 429 or attempt == retries:
+                    if model == models[-1]:
+                        raise
+                    break  # move on to the next model
+                time.sleep(2 ** attempt * 3)  # 3, 6 s
+
+
 def generate_quiz(context: str, topic: str, num_questions: int = 5, difficulty: str = "medium") -> list[Question]:
-    response = get_client().models.generate_content(
-        model=MODEL_NAME,
+    response = generate_with_retry(
         contents=build_prompt(context, topic, num_questions, difficulty),
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
