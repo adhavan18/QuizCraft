@@ -13,12 +13,13 @@ Metrics (per generator x difficulty, averaged over topics):
 import argparse
 import json
 import os
+import re
 import time
 
 import numpy as np
 
 from backend.llm import generate_quiz
-from backend.nlp_generator import generate_offline_quiz, tokenize
+from backend.nlp_generator import clean_text, generate_offline_quiz
 from backend.rag import ROOT, get_embedder, load_chunks, retrieve_chunks
 
 TOPICS = [
@@ -37,6 +38,10 @@ TOPICS = [
 ]
 
 
+def tokenize(text: str) -> list[str]:
+    return re.findall(r"[a-z]+", text.lower())
+
+
 def grounded(answer: str, context: str) -> float:
     words = [w for w in tokenize(answer) if len(w) > 2]
     ctx = set(tokenize(context))
@@ -51,7 +56,7 @@ def distractor_similarity(q) -> float:
 def evaluate(generator: str, difficulty: str, n: int, all_chunks: list) -> dict:
     rows = []
     for topic in TOPICS:
-        sources = retrieve_chunks(topic, top_k=3 if generator == "gemini" else 8)
+        sources = [clean_text(c) for c in retrieve_chunks(topic, top_k=3 if generator == "gemini" else 8)]
         start = time.perf_counter()
         if generator == "gemini":
             qs = generate_quiz(" ".join(sources), topic, n, difficulty)
