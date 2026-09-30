@@ -54,3 +54,4 @@ Thumbs.db
 
 # --- Generated vector store (rebuilt via /ingest/upload) ---
 storage/
+results/*.json

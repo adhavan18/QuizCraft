@@ -5,6 +5,7 @@ pydantic
 faiss-cpu
 torch
 transformers
+nltk
 pypdf
 python-dotenv
 google-genai

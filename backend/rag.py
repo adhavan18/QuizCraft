@@ -78,12 +78,16 @@ def index_exists() -> bool:
     return os.path.exists(INDEX_PATH) and os.path.exists(META_PATH)
 
 
-def retrieve_chunks(query: str, top_k: int = 3):
+def load_chunks() -> list:
     if not index_exists():
         raise FileNotFoundError("No index found. Upload a PDF via /ingest/upload first.")
-    index = faiss.read_index(INDEX_PATH)
     with open(META_PATH, encoding="utf-8") as f:
-        chunks = json.load(f)
+        return json.load(f)
+
+
+def retrieve_chunks(query: str, top_k: int = 3):
+    chunks = load_chunks()
+    index = faiss.read_index(INDEX_PATH)
     query_vec = get_embedder().encode([query], convert_to_numpy=True, normalize_embeddings=True)
     _, idx = index.search(query_vec.astype(np.float32), min(top_k, len(chunks)))
     return [chunks[i] for i in idx[0] if i >= 0]

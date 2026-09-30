@@ -24,13 +24,15 @@ with tab1:
 
 with tab2:
     st.header("Generate Quiz")
-    col1, col2, col3 = st.columns([3, 1, 1])
+    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
     topic = col1.text_input("Enter topic or chapter name:")
     num_q = col2.slider("Number of questions", 1, 10, 5)
     difficulty = col3.selectbox("Difficulty", ["easy", "medium", "hard"], index=1)
+    generator = col4.selectbox("Generator", ["auto", "gemini", "offline"],
+                               help="offline = local NLP pipeline (TF-IDF + embeddings), no API key needed")
 
     if st.button("Generate Quiz", disabled=not topic.strip()):
-        payload = {"topic": topic, "num_questions": num_q, "difficulty": difficulty}
+        payload = {"topic": topic, "num_questions": num_q, "difficulty": difficulty, "generator": generator}
         with st.spinner("Retrieving context and generating questions..."):
             res = requests.post(f"{API_URL}/quiz", json=payload)
         if res.status_code == 200:
@@ -41,7 +43,7 @@ with tab2:
 
     quiz = st.session_state.get("quiz")
     if quiz:
-        st.subheader(f"Quiz: {quiz['topic']} ({quiz['difficulty']})")
+        st.subheader(f"Quiz: {quiz['topic']} ({quiz['difficulty']}, {quiz['generator']})")
         answers = {}
         for i, q in enumerate(quiz["questions"]):
             answers[i] = st.radio(f"**Q{i + 1}.** {q['question']}", q["options"], index=None, key=f"q{i}")
