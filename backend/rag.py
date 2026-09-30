@@ -3,22 +3,50 @@ import os
 
 import faiss
 import numpy as np
+import torch
 from pypdf import PdfReader
-from sentence_transformers import SentenceTransformer
+from transformers import AutoModel, AutoTokenizer
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STORAGE_DIR = os.path.join(ROOT, "storage")
 INDEX_PATH = os.path.join(STORAGE_DIR, "faiss.index")
 META_PATH = os.path.join(STORAGE_DIR, "chunks.json")
 
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+
+class Embedder:
+    """all-MiniLM-L6-v2 sentence embeddings (mean pooling), same vectors as the
+    sentence-transformers library but without its scikit-learn dependency."""
+
+    def __init__(self, model_name: str = EMBED_MODEL):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name).eval()
+
+    @torch.no_grad()
+    def encode(self, texts: list, batch_size: int = 64, normalize_embeddings: bool = False,
+               convert_to_numpy: bool = True) -> np.ndarray:
+        out = []
+        for i in range(0, len(texts), batch_size):
+            batch = self.tokenizer(texts[i:i + batch_size], padding=True, truncation=True,
+                                   max_length=256, return_tensors="pt")
+            hidden = self.model(**batch).last_hidden_state
+            mask = batch["attention_mask"].unsqueeze(-1).float()
+            vecs = (hidden * mask).sum(1) / mask.sum(1).clamp(min=1e-9)
+            if normalize_embeddings:
+                vecs = torch.nn.functional.normalize(vecs, dim=1)
+            out.append(vecs.numpy())
+        return np.concatenate(out)
+
+
 _embedder = None
 
 
-def get_embedder() -> SentenceTransformer:
+def get_embedder() -> Embedder:
     # Loaded lazily so importing the module (e.g. for tests) stays fast
     global _embedder
     if _embedder is None:
-        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        _embedder = Embedder()
     return _embedder
 
 
