@@ -31,6 +31,7 @@ instance/
 .env
 .env.*
 !example.env
+!.env.example
 
 # --- Node / React ---
 node_modules/
@@ -50,3 +51,6 @@ Thumbs.db
 # --- Other ---
 *.bak
 *.swp
+
+# --- Generated vector store (rebuilt via /ingest/upload) ---
+storage/

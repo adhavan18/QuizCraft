@@ -1,24 +1,36 @@
 import os
-from fastapi import FastAPI, UploadFile, Form
-from backend.rag import load_pdf, chunk_text, build_faiss_index, retrieve_chunks
+from fastapi import FastAPI, HTTPException, UploadFile
+from backend.rag import ROOT, load_pdf, chunk_text, build_faiss_index, retrieve_chunks
 from backend.llm import generate_quiz
 from backend.models import QuizRequest, QuizResponse
 
 app = FastAPI(title="QuizLLM API")
 
+DATA_DIR = os.path.join(ROOT, "data")
+
+
 @app.post("/ingest/upload")
 async def ingest_pdf(file: UploadFile):
-    file_path = f"data/{file.filename}"
-    os.makedirs("data", exist_ok=True)
+    os.makedirs(DATA_DIR, exist_ok=True)
+    file_path = os.path.join(DATA_DIR, os.path.basename(file.filename))
     with open(file_path, "wb") as f:
         f.write(await file.read())
     text = load_pdf(file_path)
+    if not text.strip():
+        raise HTTPException(400, "No extractable text found in PDF (is it a scanned image?)")
     chunks = chunk_text(text)
     build_faiss_index(chunks)
     return {"status": "indexed", "chunks": len(chunks)}
 
+
 @app.post("/quiz", response_model=QuizResponse)
 async def generate_quiz_api(req: QuizRequest):
-    context = " ".join(retrieve_chunks(req.topic))
-    quiz_text = generate_quiz(context, req.topic, req.num_questions)
-    return QuizResponse(questions=quiz_text.split("\n"))
+    try:
+        context = " ".join(retrieve_chunks(req.topic))
+    except FileNotFoundError as e:
+        raise HTTPException(409, str(e))
+    try:
+        quiz_text = generate_quiz(context, req.topic, req.num_questions)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return QuizResponse(questions=[line for line in quiz_text.split("\n") if line.strip()])

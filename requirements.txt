@@ -3,7 +3,10 @@ uvicorn
 streamlit
 pydantic
 faiss-cpu
-sentence-transformers
+torch
+transformers
 pypdf
 python-dotenv
-google-generativeai
+google-genai
+requests
+python-multipart
