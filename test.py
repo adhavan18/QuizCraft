@@ -1,13 +1,9 @@
-import google.generativeai as genai
-import os
-
-genai.configure(api_key="api-key")
-
-
-model = genai.GenerativeModel("gemini-1.5-flash")
+from backend.llm import MODEL_NAME, get_client
 
 try:
-    response = model.generate_content("Hello Gemini, say hi in one short sentence.")
+    response = get_client().models.generate_content(
+        model=MODEL_NAME, contents="Hello Gemini, say hi in one short sentence."
+    )
     print("✅ API Key works! Response:", response.text)
 except Exception as e:
     print("API Key test failed. Error:", e)
